@@ -716,6 +716,11 @@
         .disc.guard-pending::after {
             border: 2px dashed #f59e0b;
         }
+
+        /* 壁マス：打てないマス（斜線） */
+        .cell.wall {
+            background: repeating-linear-gradient(45deg, #3f3f46 0 5px, #52525b 5px 10px);
+        }
     </style>
 </head>
 <body class="layout-vs">
@@ -967,6 +972,31 @@
                         </label>
                     </div>
                     <p class="setting-desc">弱い側は自分の手番に、自分の石を2回タップして1つだけ「絶対に返らない石」にできます（手番は消費しません）。</p>
+
+                    <div class="setting-item row section-top">
+                        <span class="setting-label">壁マス</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggle-wall">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <p class="setting-desc">スタート後、最初の1手の前に弱い側が「打てないマス」を指定します。</p>
+
+                    <div class="setting-item" id="setting-wall-count-box">
+                        <label class="setting-label" for="wall-count">壁にするマスの数</label>
+                        <select id="wall-count" class="setting-select">
+                            <option value="1">1マス</option>
+                            <option value="2" selected>2マス</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item" id="setting-wall-target-box">
+                        <label class="setting-label" for="wall-target">打てなくなる側</label>
+                        <select id="wall-target" class="setting-select">
+                            <option value="both">両者（完全な壁）</option>
+                            <option value="strong">強い側のみ</option>
+                        </select>
+                    </div>
                 </div>
 
                 <!-- 開発者用タブ（独自ルール） -->
@@ -1042,19 +1072,28 @@
             choiceEnabled: false,  // 選択肢制限
             choiceCount: 3,        // 弱い側が選ぶ候補の数
             choiceInterval: 1,     // 強い側の何手に1回制限をかけるか
-            guardEnabled: false    // 守り石
+            guardEnabled: false,   // 守り石
+            wallEnabled: false,    // 壁マス
+            wallCount: 2,          // 壁にするマスの数（1〜2）
+            wallTarget: 'both'     // 'both' = 両者打てない, 'strong' = 強い側だけ打てない
         };
 
         // 進行フェーズ
         //  'idle'   : 試合前／終局後
         //  'play'   : 通常の着手待ち
         //  'select' : 弱い側が強い側の候補マスを選んでいる最中
+        //  'wall'   : 開始前に弱い側が壁マスを選んでいる最中
         let phase = 'idle';
         let choiceSet = [];       // 弱い側が選んだ候補マス（"r,c" 形式）
         let restricted = false;   // 今の強い側の手番が候補制限中か
         let strongMoveCount = 0;  // 強い側がこれまでに打った手数
         let guardCell = null;     // 守り石の位置 {r, c}（弱い側の石・1局に1つ）
         let guardPending = null;  // 1回目のタップで仮指定中の位置 {r, c}
+        let walls = new Set();    // 壁マス（"r,c" 形式）
+
+        const isWallBlocked = (r, c, player) =>
+            walls.has(cellKey(r, c)) &&
+            (handicapConfig.wallTarget === 'both' || player === strongSide());
 
         const isGuard = (r, c) => guardCell !== null && guardCell.r === r && guardCell.c === c;
         const isGuardPending = (r, c) => guardPending !== null && guardPending.r === r && guardPending.c === c;
@@ -1068,7 +1107,7 @@
 
         // 今、時計とカードのハイライトを持っている側（候補選択中は弱い側が考えている）
         function currentActor() {
-            return phase === 'select' ? handicapConfig.weak : turn;
+            return (phase === 'select' || phase === 'wall') ? handicapConfig.weak : turn;
         }
 
         let playerTimers = {
@@ -1165,8 +1204,12 @@
                 isGameStarted = true;
                 actionBtn.textContent = 'リセット';
                 actionBtn.classList.add('reset-mode');
-                beginTurn();
-                startTimer();
+                if (handicapConfig.wallEnabled) {
+                    phase = 'wall'; // 先に壁マスを決める（時計はまだ動かさない）
+                } else {
+                    beginTurn();
+                    startTimer();
+                }
                 renderBoard();
             } else {
                 initGame();
@@ -1285,6 +1328,9 @@
             const showChoice = handicapConfig.choiceEnabled ? 'flex' : 'none';
             boxChoiceCount.style.display = showChoice;
             boxChoiceInterval.style.display = showChoice;
+            const showWall = handicapConfig.wallEnabled ? 'flex' : 'none';
+            document.getElementById('setting-wall-count-box').style.display = showWall;
+            document.getElementById('setting-wall-target-box').style.display = showWall;
         }
 
         selectWeakSide.onchange = () => { handicapConfig.weak = parseInt(selectWeakSide.value, 10); };
@@ -1298,6 +1344,15 @@
         selectChoiceInterval.onchange = () => { handicapConfig.choiceInterval = parseInt(selectChoiceInterval.value, 10); };
         const toggleGuardEl = document.getElementById('toggle-guard');
         toggleGuardEl.onchange = () => { handicapConfig.guardEnabled = toggleGuardEl.checked; };
+        const toggleWallEl = document.getElementById('toggle-wall');
+        const selectWallCount = document.getElementById('wall-count');
+        const selectWallTarget = document.getElementById('wall-target');
+        toggleWallEl.onchange = () => {
+            handicapConfig.wallEnabled = toggleWallEl.checked;
+            updateHandicapVisibility();
+        };
+        selectWallCount.onchange = () => { handicapConfig.wallCount = parseInt(selectWallCount.value, 10); };
+        selectWallTarget.onchange = () => { handicapConfig.wallTarget = selectWallTarget.value; };
         updateHandicapVisibility();
 
         function updateSettingVisibility() {
@@ -1370,7 +1425,7 @@
 
         function startTimer() {
             stopTimer();
-            if (timerConfig.mode === 'none' || turn === 0 || !isGameStarted) return;
+            if (timerConfig.mode === 'none' || turn === 0 || !isGameStarted || phase === 'wall') return;
 
             timerInterval = setInterval(() => {
                 const actor = currentActor();
@@ -1436,6 +1491,7 @@
             strongMoveCount = 0;
             guardCell = null;
             guardPending = null;
+            walls = new Set();
 
             playerTimers[1] = { main: timerConfig.mainTimeSec, sub: timerConfig.subTimeSec };
             playerTimers[-1] = { main: timerConfig.mainTimeSec, sub: timerConfig.subTimeSec };
@@ -1470,6 +1526,7 @@
 
         function getFlippableDirections(r, c, currentTurn) {
             if (board[r][c] !== 0) return 0;
+            if (isWallBlocked(r, c, currentTurn)) return 0;
             let mask = 0;
 
             for (let d = 0; d < 8; d++) {
@@ -1549,13 +1606,32 @@
         // 盤面タップの振り分け
         function handleCellClick(r, c) {
             if (!isGameStarted || turn === 0) return;
-            if (phase === 'select') {
+            if (phase === 'wall') {
+                toggleWall(r, c);
+            } else if (phase === 'select') {
                 toggleChoice(r, c);
             } else if (canDesignateGuard() && board[r][c] === handicapConfig.weak) {
                 tapGuard(r, c);
             } else {
                 makeMove(r, c);
             }
+        }
+
+        // 壁マス：空きマスをタップで指定（もう一度で取り消し）。必要数そろったら対局開始
+        function toggleWall(r, c) {
+            if (board[r][c] !== 0) return;
+            const key = cellKey(r, c);
+            if (walls.has(key)) {
+                walls.delete(key);
+            } else {
+                walls.add(key);
+            }
+
+            if (walls.size >= handicapConfig.wallCount) {
+                beginTurn();
+                startTimer();
+            }
+            renderBoard();
         }
 
         // 守り石：自分の石を1回タップで仮指定、同じ石をもう1回で確定
@@ -1673,6 +1749,7 @@
                 for (let c = 0; c < BOARD_SIZE; c++) {
                     const cell = document.createElement('div');
                     cell.className = 'cell';
+                    if (board[r][c] === 0 && walls.has(cellKey(r, c))) cell.classList.add('wall');
                     
                     const row = r;
                     const col = c;
@@ -1692,7 +1769,7 @@
                         const disc = document.createElement('div');
                         disc.className = 'disc white' + guardClass(r, c);
                         cell.appendChild(disc);
-                    } else if (isGameStarted && turn !== 0 && canMove(r, c, turn) && isAllowedMove(r, c)) {
+                    } else if (isGameStarted && turn !== 0 && phase !== 'wall' && canMove(r, c, turn) && isAllowedMove(r, c)) {
                         const guide = document.createElement('div');
                         guide.className = 'guide';
                         cell.appendChild(guide);
@@ -1765,7 +1842,9 @@
             const weakName = sideName(handicapConfig.weak);
             const strongName = sideName(strongSide());
             const n = handicapConfig.choiceCount;
-            if (isGameStarted && phase === 'select') {
+            if (isGameStarted && phase === 'wall') {
+                hintMsg.textContent = `${weakName}：壁にするマスを${handicapConfig.wallCount}つ選んでください（${walls.size}/${handicapConfig.wallCount}）`;
+            } else if (isGameStarted && phase === 'select') {
                 hintMsg.textContent = `${weakName}：${strongName} が打てる候補を${n}つ選んでください（${choiceSet.length}/${n}）`;
             } else if (isGameStarted && phase === 'play' && restricted) {
                 hintMsg.textContent = `${strongName}：${weakName} が選んだ${n}か所から打ってください`;
