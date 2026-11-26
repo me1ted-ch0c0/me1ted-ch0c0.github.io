@@ -858,7 +858,6 @@
             <div class="tabs">
                 <button class="tab-btn active" data-tab="tab-game">ゲーム</button>
                 <button class="tab-btn" data-tab="tab-display">表示</button>
-                <button class="tab-btn" data-tab="tab-handicap">ハンデ</button>
                 <button class="tab-btn" data-tab="tab-system">開発者用</button>
             </div>
 
@@ -924,9 +923,44 @@
                     </div>
                 </div>
 
-                <!-- ハンデタブ（強い側と弱い側の差を埋めるルール） -->
-                <div class="tab-content" id="tab-handicap">
-                    <div class="setting-item">
+                <!-- 開発者用タブ（独自ルール） -->
+                <div class="tab-content" id="tab-system">
+                    <div class="setting-item row">
+                        <span class="setting-label">裏返せる個数の制限</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggle-flip-limit">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item" id="setting-flip-limit-box">
+                        <span class="setting-label">1手で裏返せる最大個数</span>
+                        <div class="setting-value-display"><span id="flip-limit-val">3</span>個</div>
+                        <div class="slider-control-container">
+                            <button class="step-btn" id="btn-flip-minus">−</button>
+                            <input type="range" id="setting-flip-limit" class="setting-input" min="1" max="20" step="1" value="3">
+                            <button class="step-btn" id="btn-flip-plus">＋</button>
+                        </div>
+                    </div>
+
+                    <div class="setting-item" id="setting-flip-order-box">
+                        <label class="setting-label" for="flip-order">裏返す優先順位</label>
+                        <select id="flip-order" class="setting-select">
+                            <option value="near">置いた石に近い石から</option>
+                            <option value="far">置いた石から遠い石から</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item row" style="padding-top: 12px; border-top: 1px solid #e0e0e0;">
+                        <span class="setting-label">石の数の一の位で勝敗を決める</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggle-ones-digit">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <!-- ハンデルール（強い側と弱い側の差を埋める） -->
+                    <div class="setting-item section-top">
                         <label class="setting-label" for="weak-side">ハンデを受ける側（弱い側）</label>
                         <select id="weak-side" class="setting-select">
                             <option value="1">BLACK（黒）</option>
@@ -996,43 +1030,6 @@
                             <option value="both">両者（完全な壁）</option>
                             <option value="strong">強い側のみ</option>
                         </select>
-                    </div>
-                </div>
-
-                <!-- 開発者用タブ（独自ルール） -->
-                <div class="tab-content" id="tab-system">
-                    <div class="setting-item row">
-                        <span class="setting-label">裏返せる個数の制限</span>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="toggle-flip-limit">
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="setting-item" id="setting-flip-limit-box">
-                        <span class="setting-label">1手で裏返せる最大個数</span>
-                        <div class="setting-value-display"><span id="flip-limit-val">3</span>個</div>
-                        <div class="slider-control-container">
-                            <button class="step-btn" id="btn-flip-minus">−</button>
-                            <input type="range" id="setting-flip-limit" class="setting-input" min="1" max="20" step="1" value="3">
-                            <button class="step-btn" id="btn-flip-plus">＋</button>
-                        </div>
-                    </div>
-
-                    <div class="setting-item" id="setting-flip-order-box">
-                        <label class="setting-label" for="flip-order">裏返す優先順位</label>
-                        <select id="flip-order" class="setting-select">
-                            <option value="near">置いた石に近い石から</option>
-                            <option value="far">置いた石から遠い石から</option>
-                        </select>
-                    </div>
-
-                    <div class="setting-item row" style="padding-top: 12px; border-top: 1px solid #e0e0e0;">
-                        <span class="setting-label">石の数の一の位で勝敗を決める</span>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="toggle-ones-digit">
-                            <span class="toggle-slider"></span>
-                        </label>
                     </div>
 
                     <p style="margin: 4px 0 0; font-size: 0.7rem; line-height: 1.5; color: #b0b0b0; text-align: center;">
