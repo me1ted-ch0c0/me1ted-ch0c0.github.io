@@ -694,6 +694,28 @@
 
         .pick-mark.black { border-color: #111111; }
         .pick-mark.white { border-color: #ffffff; }
+
+        /* 守り石：絶対に返らない石の印（金色のリング）。指定待ちは点線 */
+        .disc {
+            position: relative;
+        }
+
+        .disc.guarded::after,
+        .disc.guard-pending::after {
+            content: "";
+            position: absolute;
+            inset: 20%;
+            border-radius: 50%;
+        }
+
+        .disc.guarded::after {
+            border: 3px solid #f59e0b;
+            box-shadow: 0 0 6px rgba(245, 158, 11, 0.7);
+        }
+
+        .disc.guard-pending::after {
+            border: 2px dashed #f59e0b;
+        }
     </style>
 </head>
 <body class="layout-vs">
@@ -936,6 +958,15 @@
                             <option value="5">5手に1回</option>
                         </select>
                     </div>
+
+                    <div class="setting-item row section-top">
+                        <span class="setting-label">守り石</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggle-guard">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <p class="setting-desc">弱い側は自分の手番に、自分の石を2回タップして1つだけ「絶対に返らない石」にできます（手番は消費しません）。</p>
                 </div>
 
                 <!-- 開発者用タブ（独自ルール） -->
@@ -1010,7 +1041,8 @@
             weak: 1,               // ハンデを受ける側（1 = BLACK, -1 = WHITE）。強い側はその反対
             choiceEnabled: false,  // 選択肢制限
             choiceCount: 3,        // 弱い側が選ぶ候補の数
-            choiceInterval: 1      // 強い側の何手に1回制限をかけるか
+            choiceInterval: 1,     // 強い側の何手に1回制限をかけるか
+            guardEnabled: false    // 守り石
         };
 
         // 進行フェーズ
@@ -1021,6 +1053,14 @@
         let choiceSet = [];       // 弱い側が選んだ候補マス（"r,c" 形式）
         let restricted = false;   // 今の強い側の手番が候補制限中か
         let strongMoveCount = 0;  // 強い側がこれまでに打った手数
+        let guardCell = null;     // 守り石の位置 {r, c}（弱い側の石・1局に1つ）
+        let guardPending = null;  // 1回目のタップで仮指定中の位置 {r, c}
+
+        const isGuard = (r, c) => guardCell !== null && guardCell.r === r && guardCell.c === c;
+        const isGuardPending = (r, c) => guardPending !== null && guardPending.r === r && guardPending.c === c;
+        const canDesignateGuard = () =>
+            handicapConfig.guardEnabled && guardCell === null &&
+            isGameStarted && phase === 'play' && turn === handicapConfig.weak;
 
         const strongSide = () => -handicapConfig.weak;
         const sideName = (p) => p === 1 ? 'BLACK' : 'WHITE';
@@ -1256,6 +1296,8 @@
         document.getElementById('btn-choice-minus').onclick = () => updateChoiceCount(parseInt(inputChoiceCount.value, 10) - 1);
         document.getElementById('btn-choice-plus').onclick = () => updateChoiceCount(parseInt(inputChoiceCount.value, 10) + 1);
         selectChoiceInterval.onchange = () => { handicapConfig.choiceInterval = parseInt(selectChoiceInterval.value, 10); };
+        const toggleGuardEl = document.getElementById('toggle-guard');
+        toggleGuardEl.onchange = () => { handicapConfig.guardEnabled = toggleGuardEl.checked; };
         updateHandicapVisibility();
 
         function updateSettingVisibility() {
@@ -1392,6 +1434,8 @@
             choiceSet = [];
             restricted = false;
             strongMoveCount = 0;
+            guardCell = null;
+            guardPending = null;
 
             playerTimers[1] = { main: timerConfig.mainTimeSec, sub: timerConfig.subTimeSec };
             playerTimers[-1] = { main: timerConfig.mainTimeSec, sub: timerConfig.subTimeSec };
@@ -1432,14 +1476,17 @@
                 let nr = r + DX[d];
                 let nc = c + DY[d];
                 let count = 0;
+                let flippable = 0; // 守り石を除いた、実際に返せる石の数
 
                 while (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === -currentTurn) {
+                    if (!isGuard(nr, nc)) flippable++;
                     nr += DX[d];
                     nc += DY[d];
                     count++;
                 }
 
-                if (count > 0 && nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === currentTurn) {
+                // 守り石しか挟めない方向は「返せる石がない」ので無効
+                if (count > 0 && flippable > 0 && nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === currentTurn) {
                     mask |= (1 << d);
                 }
             }
@@ -1504,9 +1551,22 @@
             if (!isGameStarted || turn === 0) return;
             if (phase === 'select') {
                 toggleChoice(r, c);
+            } else if (canDesignateGuard() && board[r][c] === handicapConfig.weak) {
+                tapGuard(r, c);
             } else {
                 makeMove(r, c);
             }
+        }
+
+        // 守り石：自分の石を1回タップで仮指定、同じ石をもう1回で確定
+        function tapGuard(r, c) {
+            if (isGuardPending(r, c)) {
+                guardCell = { r, c };
+                guardPending = null;
+            } else {
+                guardPending = { r, c };
+            }
+            renderBoard();
         }
 
         // 選択肢制限：弱い側が強い側の候補をタップで選ぶ（もう一度タップで取り消し）
@@ -1539,6 +1599,7 @@
             if (mask === 0) return;
 
             board[r][c] = turn;
+            guardPending = null;
 
             // 裏返せる石を全方向から収集（dist = 置いた石からの距離）
             const flips = [];
@@ -1548,7 +1609,7 @@
                     let nc = c + DY[d];
                     let dist = 1;
                     while (board[nr][nc] === -turn) {
-                        flips.push({ r: nr, c: nc, dist, d });
+                        if (!isGuard(nr, nc)) flips.push({ r: nr, c: nc, dist, d }); // 守り石は返らない
                         nr += DX[d];
                         nc += DY[d];
                         dist++;
@@ -1624,12 +1685,12 @@
                     if (board[r][c] === 1) {
                         black++;
                         const disc = document.createElement('div');
-                        disc.className = 'disc black';
+                        disc.className = 'disc black' + guardClass(r, c);
                         cell.appendChild(disc);
                     } else if (board[r][c] === -1) {
                         white++;
                         const disc = document.createElement('div');
-                        disc.className = 'disc white';
+                        disc.className = 'disc white' + guardClass(r, c);
                         cell.appendChild(disc);
                     } else if (isGameStarted && turn !== 0 && canMove(r, c, turn) && isAllowedMove(r, c)) {
                         const guide = document.createElement('div');
@@ -1693,6 +1754,12 @@
             updateHint();
         }
 
+        function guardClass(r, c) {
+            if (isGuard(r, c)) return ' guarded';
+            if (isGuardPending(r, c)) return ' guard-pending';
+            return '';
+        }
+
         // 盤面下の進行ヒント
         function updateHint() {
             const weakName = sideName(handicapConfig.weak);
@@ -1702,6 +1769,10 @@
                 hintMsg.textContent = `${weakName}：${strongName} が打てる候補を${n}つ選んでください（${choiceSet.length}/${n}）`;
             } else if (isGameStarted && phase === 'play' && restricted) {
                 hintMsg.textContent = `${strongName}：${weakName} が選んだ${n}か所から打ってください`;
+            } else if (canDesignateGuard() && guardPending) {
+                hintMsg.textContent = `${weakName}：同じ石をもう一度タップで守り石に決定（別の石をタップで変更）`;
+            } else if (canDesignateGuard()) {
+                hintMsg.textContent = `${weakName}：自分の石を2回タップで守り石にできます（1局に1回）`;
             } else {
                 hintMsg.textContent = '';
             }
