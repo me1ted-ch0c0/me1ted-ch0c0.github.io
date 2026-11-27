@@ -959,6 +959,14 @@
                         </label>
                     </div>
 
+                    <div class="setting-item row section-top">
+                        <span class="setting-label">勝ったら負け（少ない方が勝ち）</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggle-reverse-win">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
                     <!-- ハンデルール（強い側と弱い側の差を埋める） -->
                     <div class="setting-item section-top">
                         <label class="setting-label" for="weak-side">ハンデを受ける側（弱い側）</label>
@@ -1060,7 +1068,8 @@
             flipLimitEnabled: false,
             flipLimit: 3,
             flipOrder: 'near', // 'near' = 置いた石に近い順, 'far' = 遠い順
-            onesDigitWin: false // true = 石の数の一の位の大小で勝敗を決める
+            onesDigitWin: false, // true = 石の数の一の位の大小で勝敗を決める
+            reverseWin: false    // true = 勝敗を逆にする（石が少ない方が勝ち）
         };
 
         // ハンデ設定
@@ -1303,6 +1312,13 @@
             renderBoard();
         };
 
+        // 独自ルール：勝ったら負け（一の位ルールと併用時は一の位が小さい方が勝ち）
+        const toggleReverseWin = document.getElementById('toggle-reverse-win');
+        toggleReverseWin.onchange = () => {
+            ruleConfig.reverseWin = toggleReverseWin.checked;
+            renderBoard();
+        };
+
         // ハンデ設定UI
         const selectWeakSide = document.getElementById('weak-side');
         const toggleChoiceEl = document.getElementById('toggle-choice');
@@ -1446,7 +1462,10 @@
 
                 updateTimerUI();
 
-                if (p.main <= 0 && p.sub <= 0) {
+                // ノーマル／加算は持ち時間だけで判定（副タイマーを使わないため）
+                const usesSub = timerConfig.mode === 'delay' || timerConfig.mode === 'byoyomi';
+                const timedOut = usesSub ? (p.main <= 0 && p.sub <= 0) : p.main <= 0;
+                if (timedOut) {
                     stopTimer();
                     const loserTurn = actor;
                     turn = 0;
@@ -1819,8 +1838,10 @@
                 cardWhiteBottom.classList.remove('active');
                 cardWhiteNormal.classList.remove('active');
 
-                if (blackScore > whiteScore) winnerMsg.textContent = 'BLACK WIN!';
-                else if (whiteScore > blackScore) winnerMsg.textContent = 'WHITE WIN!';
+                // 勝ったら負けルールON時は大小を反転（時間切れ負けは反転しない）
+                const diff = (blackScore - whiteScore) * (ruleConfig.reverseWin ? -1 : 1);
+                if (diff > 0) winnerMsg.textContent = 'BLACK WIN!';
+                else if (diff < 0) winnerMsg.textContent = 'WHITE WIN!';
                 else winnerMsg.textContent = 'DRAW GAME!';
             }
 
